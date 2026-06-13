@@ -1,0 +1,197 @@
+name: 7️⃣ Dev EKS ArgoCD
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: 'plan'
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["6️⃣ Dev EKS ALB Controller"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-2
+          role-session-name: GHA-DevEKSArgoCD-Plan-${{ github.run_id }}
+          role-duration-seconds: 3600
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        working-directory: environments/dev/eks-argocd
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: environments/dev/eks-argocd
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: environments/dev/eks-argocd
+        env:
+          TF_VAR_workload_account_id: ${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}
+          TF_VAR_git_repo_url:        ${{ secrets.GIT_REPO_URL }}
+          TF_VAR_postgres_db:         ${{ secrets.POSTGRES_DB }}
+          TF_VAR_postgres_user:       ${{ secrets.POSTGRES_USER }}
+          TF_VAR_postgres_password:   ${{ secrets.POSTGRES_PASSWORD }}
+          TF_VAR_pgadmin_email:       ${{ secrets.PGADMIN_EMAIL }}
+          TF_VAR_pgadmin_password:    ${{ secrets.PGADMIN_PASSWORD }}
+          TF_LOG: ${{ inputs.debug && 'DEBUG' || 'INFO' }}
+        run: |
+          echo "::group::Terraform Plan Output"
+          ACTION="${{ inputs.action || 'apply' }}"
+          if [ "$ACTION" == "destroy" ]; then
+            terraform plan -destroy -no-color | tee plan.txt
+          else
+            terraform plan -no-color | tee plan.txt
+          fi
+          echo "::endgroup::"
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: eks-argocd-plan
+          path: environments/dev/eks-argocd/plan.txt
+          retention-days: 5
+
+      - name: Plan Summary
+        run: |
+          echo "### 📋 ArgoCD Plan" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          tail -30 environments/dev/eks-argocd/plan.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  apply:
+    runs-on: self-hosted
+    needs: plan
+    environment: dev
+    timeout-minutes: 30
+    if: |
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'destroy'))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-2
+          role-session-name: GHA-DevEKSArgoCD-Apply-${{ github.run_id }}
+          role-duration-seconds: 3600
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        working-directory: environments/dev/eks-argocd
+        run: terraform init
+
+      - name: Stage 1 - Install ArgoCD + Secrets
+        working-directory: environments/dev/eks-argocd
+        env:
+          TF_VAR_workload_account_id: ${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}
+          TF_VAR_git_repo_url:        ${{ secrets.GIT_REPO_URL }}
+          TF_VAR_postgres_db:         ${{ secrets.POSTGRES_DB }}
+          TF_VAR_postgres_user:       ${{ secrets.POSTGRES_USER }}
+          TF_VAR_postgres_password:   ${{ secrets.POSTGRES_PASSWORD }}
+          TF_VAR_pgadmin_email:       ${{ secrets.PGADMIN_EMAIL }}
+          TF_VAR_pgadmin_password:    ${{ secrets.PGADMIN_PASSWORD }}
+          TF_LOG: ${{ inputs.debug && 'TRACE' || 'INFO' }}
+        run: |
+          ACTION="${{ inputs.action || 'apply' }}"
+          if [ "$ACTION" == "destroy" ]; then
+            terraform destroy -auto-approve -no-color
+          else
+            terraform apply -auto-approve -no-color \
+              -target=module.eks_argocd.kubernetes_namespace.argocd \
+              -target=module.eks_argocd.kubernetes_namespace.apps \
+              -target=module.eks_argocd.helm_release.argocd \
+              -target=module.eks_argocd.kubernetes_secret.postgres \
+              -target=module.eks_argocd.kubernetes_secret.pgadmin
+          fi
+
+      - name: Wait for ArgoCD CRDs
+        if: inputs.action != 'destroy'
+        run: sleep 60
+
+      - name: Stage 2 - Create ArgoCD Applications
+        if: inputs.action != 'destroy'
+        working-directory: environments/dev/eks-argocd
+        env:
+          TF_VAR_workload_account_id: ${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}
+          TF_VAR_git_repo_url:        ${{ secrets.GIT_REPO_URL }}
+          TF_VAR_postgres_db:         ${{ secrets.POSTGRES_DB }}
+          TF_VAR_postgres_user:       ${{ secrets.POSTGRES_USER }}
+          TF_VAR_postgres_password:   ${{ secrets.POSTGRES_PASSWORD }}
+          TF_VAR_pgadmin_email:       ${{ secrets.PGADMIN_EMAIL }}
+          TF_VAR_pgadmin_password:    ${{ secrets.PGADMIN_PASSWORD }}
+        run: terraform apply -auto-approve -no-color
+
+      - name: Get ALB Address
+        if: success() && inputs.action != 'destroy'
+        run: |
+          # Explicitly assume dev role first
+          CREDS=$(aws sts assume-role \
+            --role-arn arn:aws:iam::${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}:role/OrganizationAccountAccessRole \
+            --role-session-name GHA-GetALB \
+            --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+            --output text)
+
+          export AWS_ACCESS_KEY_ID=$(echo $CREDS | awk '{print $1}')
+          export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | awk '{print $2}')
+          export AWS_SESSION_TOKEN=$(echo $CREDS | awk '{print $3}')
+
+          aws eks update-kubeconfig \
+            --name dev-eks-cluster \
+            --region ap-southeast-2
+
+          for i in {1..18}; do
+            ALB=$(kubectl get ingress pgadmin -n apps \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            if [ -n "$ALB" ]; then
+              echo "### ✅ ArgoCD + pgAdmin Complete" >> $GITHUB_STEP_SUMMARY
+              echo "**pgAdmin URL:** http://$ALB" >> $GITHUB_STEP_SUMMARY
+              echo "⏭️ Next: **8️⃣ Dev EKS Karpenter** will trigger automatically" >> $GITHUB_STEP_SUMMARY
+              break
+            fi
+            echo "Waiting for ALB... ($i/18)"
+            sleep 10
+          done

@@ -1,0 +1,42 @@
+# ============================================================================
+# PLATFORM APPS
+# Pure K8s tools - no AWS IAM needed
+# Add new platform tools here, push to main, ArgoCD deploys
+# ============================================================================
+
+# ── metrics-server ────────────────────────────────────────────────────────
+# Enables: kubectl top nodes / kubectl top pods
+# Required for: HPA (HorizontalPodAutoscaler), Karpenter consolidation
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metrics-server
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kubernetes-sigs.github.io/metrics-server/
+    chart: metrics-server
+    targetRevision: 3.12.0
+    helm:
+      values: |
+        args:
+          - --kubelet-insecure-tls   # required for EKS
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

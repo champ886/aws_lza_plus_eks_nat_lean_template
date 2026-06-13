@@ -1,0 +1,28 @@
+# ============================================================================
+# pgAdmin Ingress
+# This is what triggers the ALB controller to create a real AWS ALB
+# The annotation "kubernetes.io/ingress.class: alb" is the key trigger
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pgadmin
+  namespace: apps
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing      # Public ALB
+    alb.ingress.kubernetes.io/target-type: ip              # Route to pod IPs directly
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /misc/ping
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pgadmin
+                port:
+                  number: 80

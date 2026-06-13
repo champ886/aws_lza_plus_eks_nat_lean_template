@@ -1,0 +1,39 @@
+# -----------------------------------------------
+# TERRAFORM WORKING DIRECTORY
+# Never commit - auto generated on terraform init
+# -----------------------------------------------
+.terraform/
+
+# -----------------------------------------------
+# LOCK FILE
+# Can cause version conflicts on CI pipelines
+# -----------------------------------------------
+.terraform.lock.hcl
+
+# -----------------------------------------------
+# TFVARS
+# Contains account IDs and sensitive emails
+# -----------------------------------------------
+terraform.tfvars
+
+# -----------------------------------------------
+# STATE FILES
+# These live in S3 not in git
+# -----------------------------------------------
+*.tfstate
+*.tfstate.backup
+
+# -----------------------------------------------
+# SAVED PLAN FILES
+# -----------------------------------------------
+tfplan
+
+# -----------------------------------------------
+# Secrets Files
+# -----------------------------------------------
+github-secrets.sh 
+
+# -----------------------------------------------
+# imported eks modules from gha state
+# -----------------------------------------------
+import-eks-resources.sh

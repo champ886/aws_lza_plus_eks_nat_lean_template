@@ -1,0 +1,44 @@
+# ============================================================================
+# pgAdmin Deployment
+# Web UI for managing PostgreSQL - proves connectivity to DB
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4:8.10
+          ports:
+            - containerPort: 80
+          envFrom:
+            - secretRef:
+                name: pgadmin-secret
+          env:
+            # Pre-configure the postgres connection so you don't have to type it in
+            - name: PGADMIN_CONFIG_SERVER_MODE
+              value: "False"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10

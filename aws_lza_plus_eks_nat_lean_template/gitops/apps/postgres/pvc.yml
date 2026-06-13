@@ -1,0 +1,16 @@
+# ============================================================================
+# Persistent Volume Claim
+# Gives postgres a disk to store data on
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: apps
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3   # EKS default storage class
+  resources:
+    requests:
+      storage: 5Gi

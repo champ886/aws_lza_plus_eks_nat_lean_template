@@ -1,0 +1,31 @@
+# ============================================================================
+# ROOT APP OF APPS (reference only - Terraform creates this via kubectl_manifest)
+# directory.recurse: true means ArgoCD scans ALL yaml files in gitops/
+# including apps.yaml and platform.yaml, and creates each Application
+# defined inside them as a child app.
+# ============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<YOUR_GITHUB_ORG>/<YOUR_REPO_NAME>.git
+    targetRevision: main
+    path: gitops
+    directory:
+      recurse: false   # only top-level yaml files (apps.yaml, platform.yaml)
+                        # set true if you nest further and want deeper scanning
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

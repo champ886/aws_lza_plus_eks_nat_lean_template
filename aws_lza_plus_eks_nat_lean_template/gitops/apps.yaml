@@ -1,0 +1,49 @@
+# ============================================================================
+# WORKLOAD APPS
+# Business applications - add new apps here, push to main, ArgoCD deploys
+# ============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pgadmin
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<YOUR_GITHUB_ORG>/<YOUR_REPO_NAME>.git
+    targetRevision: main
+    path: gitops/apps/pgadmin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<YOUR_GITHUB_ORG>/<YOUR_REPO_NAME>.git
+    targetRevision: main
+    path: gitops/apps/postgres
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

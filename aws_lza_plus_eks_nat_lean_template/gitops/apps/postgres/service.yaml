@@ -1,0 +1,16 @@
+# ============================================================================
+# PostgreSQL Service
+# ClusterIP = only reachable inside the cluster (pgAdmin talks to this)
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: apps
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

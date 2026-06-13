@@ -1,0 +1,16 @@
+# ============================================================================
+# pgAdmin Service
+# ClusterIP - ALB ingress routes to this service
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: apps
+spec:
+  selector:
+    app: pgadmin
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
