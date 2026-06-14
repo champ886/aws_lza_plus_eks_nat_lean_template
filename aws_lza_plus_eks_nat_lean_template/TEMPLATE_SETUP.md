@@ -116,7 +116,7 @@ Outputs the role ARN — add it as the <code>AWS_ROLE_ARN</code> GitHub secret.
 
 ## 7. Run the pipeline
 
-Trigger workflow <strong>1️⃣ Security VPC</strong> manually with <code>action: apply</code>. The remaining 10 workflows chain automatically — approve each as it arrives. Full details in <a href="RUNBOOK.md">RUNBOOK.md</a>.
+Trigger workflow <strong>🚀 Pipeline (apply)</strong> with <code>action: apply</code>. All 9 components run as a single job graph, in order — approve each <code>environment</code> gate as it appears. Full details in <a href="RUNBOOK.md">RUNBOOK.md</a>.
 
 ## What you're getting
 

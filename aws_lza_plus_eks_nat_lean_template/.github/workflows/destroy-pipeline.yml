@@ -1,0 +1,123 @@
+# ============================================================================
+# DESTROY PIPELINE — reverse order 9 → 1
+# ============================================================================
+# Separate from the apply orchestrator on purpose. Running this workflow IS
+# the deliberate destroy action — the `action: destroy` value is hardcoded
+# below, never chosen by the user, so there's no risk of an apply pipeline
+# accidentally tearing everything down in the wrong order.
+#
+# Approval gates (environment: dev/shared/prod) still apply to every step.
+# ============================================================================
+name: 🔥 Pipeline (destroy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug logging'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  eks-kubecost:
+    name: 9️⃣ Dev EKS Kubecost
+    uses: ./.github/workflows/component-9-dev-eks-kubecost.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  eks-karpenter:
+    name: 8️⃣ Dev EKS Karpenter
+    needs: eks-kubecost
+    uses: ./.github/workflows/component-8-dev-eks-karpenter.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  eks-argocd:
+    name: 7️⃣ Dev EKS ArgoCD
+    needs: eks-karpenter
+    uses: ./.github/workflows/component-7-dev-eks-argocd.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  eks-alb:
+    name: 6️⃣ Dev EKS ALB Controller
+    needs: eks-argocd
+    uses: ./.github/workflows/component-6-dev-eks-alb.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  eks-addons:
+    name: 5️⃣b Dev EKS Add-ons
+    needs: eks-alb
+    uses: ./.github/workflows/component-5b-dev-eks-addons.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  eks-cluster:
+    name: 5️⃣a Dev EKS Cluster
+    needs: eks-addons
+    uses: ./.github/workflows/component-5a-dev-eks-cluster.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  transit-gateway:
+    name: 4️⃣b Transit Gateway
+    needs: eks-cluster
+    uses: ./.github/workflows/component-4b-transit-gateway.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  peering:
+    name: 4️⃣ VPC Peering
+    needs: transit-gateway
+    uses: ./.github/workflows/component-4-peering.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  prod-vpc:
+    name: 3️⃣ Prod VPC
+    needs: peering
+    uses: ./.github/workflows/component-3-prod-vpc.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  dev-vpc:
+    name: 2️⃣ Dev VPC
+    needs: prod-vpc
+    uses: ./.github/workflows/component-2-dev-vpc.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit
+
+  security-vpc:
+    name: 1️⃣ Security VPC
+    needs: dev-vpc
+    uses: ./.github/workflows/component-1-security-vpc.yml
+    with:
+      action: destroy
+      debug: ${{ inputs.debug }}
+    secrets: inherit

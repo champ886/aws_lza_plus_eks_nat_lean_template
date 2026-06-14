@@ -1,6 +1,15 @@
 name: 8️⃣ Dev EKS Karpenter
 
 on:
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+      debug:
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       action:
@@ -17,10 +26,6 @@ on:
         required: false
         type: boolean
         default: false
-  workflow_run:
-    workflows: ["7️⃣ Dev EKS ArgoCD"]
-    types: [completed]
-    branches: [main]
 
 permissions:
   id-token: write
@@ -30,9 +35,6 @@ jobs:
   plan:
     runs-on: self-hosted
     timeout-minutes: 15
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
@@ -43,7 +45,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ap-southeast-2
-          role-session-name: GHA-DevKarpenter-Plan-${{ github.run_id }}
+          role-session-name: GHA-8DevEKSKarpenter-Plan-${{ github.run_id }}
           role-duration-seconds: 3600
 
       - name: Setup Terraform
@@ -66,8 +68,7 @@ jobs:
           TF_LOG: ${{ inputs.debug && 'DEBUG' || 'INFO' }}
         run: |
           echo "::group::Terraform Plan Output"
-          ACTION="${{ inputs.action || 'apply' }}"
-          if [ "$ACTION" == "destroy" ]; then
+          if [ "${{ inputs.action }}" == "destroy" ]; then
             terraform plan -destroy -no-color | tee plan.txt
           else
             terraform plan -no-color | tee plan.txt
@@ -83,7 +84,7 @@ jobs:
 
       - name: Plan Summary
         run: |
-          echo "### 📋 Karpenter Plan" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 8️⃣ Dev EKS Karpenter Plan" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           tail -30 environments/dev/eks-karpenter/plan.txt >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -91,11 +92,9 @@ jobs:
   apply:
     runs-on: self-hosted
     needs: plan
+    if: inputs.action == 'apply' || inputs.action == 'destroy'
     environment: dev
     timeout-minutes: 30
-    if: |
-      github.event_name == 'workflow_run' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'destroy'))
 
     steps:
       - name: Checkout
@@ -106,7 +105,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ap-southeast-2
-          role-session-name: GHA-DevKarpenter-Apply-${{ github.run_id }}
+          role-session-name: GHA-8DevEKSKarpenter-Apply-${{ github.run_id }}
           role-duration-seconds: 3600
 
       - name: Setup Terraform
@@ -124,8 +123,7 @@ jobs:
           TF_VAR_workload_account_id: ${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}
           TF_LOG: ${{ inputs.debug && 'TRACE' || 'INFO' }}
         run: |
-          ACTION="${{ inputs.action || 'apply' }}"
-          if [ "$ACTION" == "destroy" ]; then
+          if [ "${{ inputs.action }}" == "destroy" ]; then
             terraform destroy -auto-approve -no-color
           else
             terraform apply -auto-approve -no-color
@@ -133,7 +131,9 @@ jobs:
 
       - name: Summary
         if: success()
+        working-directory: environments/dev/eks-karpenter
         run: |
-          echo "### ✅ Karpenter Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "⏭️ Next: **9️⃣ Dev EKS Kubecost** will trigger automatically" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ 8️⃣ Dev EKS Karpenter Complete" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          terraform output 2>/dev/null >> $GITHUB_STEP_SUMMARY || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -1,6 +1,15 @@
 name: 7️⃣ Dev EKS ArgoCD
 
 on:
+  workflow_call:
+    inputs:
+      action:
+        type: string
+        required: true
+      debug:
+        type: boolean
+        required: false
+        default: false
   workflow_dispatch:
     inputs:
       action:
@@ -17,10 +26,6 @@ on:
         required: false
         type: boolean
         default: false
-  workflow_run:
-    workflows: ["6️⃣ Dev EKS ALB Controller"]
-    types: [completed]
-    branches: [main]
 
 permissions:
   id-token: write
@@ -30,9 +35,6 @@ jobs:
   plan:
     runs-on: self-hosted
     timeout-minutes: 15
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
@@ -72,8 +74,7 @@ jobs:
           TF_LOG: ${{ inputs.debug && 'DEBUG' || 'INFO' }}
         run: |
           echo "::group::Terraform Plan Output"
-          ACTION="${{ inputs.action || 'apply' }}"
-          if [ "$ACTION" == "destroy" ]; then
+          if [ "${{ inputs.action }}" == "destroy" ]; then
             terraform plan -destroy -no-color | tee plan.txt
           else
             terraform plan -no-color | tee plan.txt
@@ -97,11 +98,9 @@ jobs:
   apply:
     runs-on: self-hosted
     needs: plan
+    if: inputs.action == 'apply' || inputs.action == 'destroy'
     environment: dev
     timeout-minutes: 30
-    if: |
-      github.event_name == 'workflow_run' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'destroy'))
 
     steps:
       - name: Checkout
@@ -136,8 +135,7 @@ jobs:
           TF_VAR_pgadmin_password:    ${{ secrets.PGADMIN_PASSWORD }}
           TF_LOG: ${{ inputs.debug && 'TRACE' || 'INFO' }}
         run: |
-          ACTION="${{ inputs.action || 'apply' }}"
-          if [ "$ACTION" == "destroy" ]; then
+          if [ "${{ inputs.action }}" == "destroy" ]; then
             terraform destroy -auto-approve -no-color
           else
             terraform apply -auto-approve -no-color \
@@ -168,7 +166,8 @@ jobs:
       - name: Get ALB Address
         if: success() && inputs.action != 'destroy'
         run: |
-          # Explicitly assume dev role first
+          # Explicitly assume dev role first - the management-account GHA role
+          # can't internally assume this role via update-kubeconfig --role-arn
           CREDS=$(aws sts assume-role \
             --role-arn arn:aws:iam::${{ secrets.DEV_WORKLOAD_ACCOUNT_ID }}:role/OrganizationAccountAccessRole \
             --role-session-name GHA-GetALB \
@@ -189,7 +188,6 @@ jobs:
             if [ -n "$ALB" ]; then
               echo "### ✅ ArgoCD + pgAdmin Complete" >> $GITHUB_STEP_SUMMARY
               echo "**pgAdmin URL:** http://$ALB" >> $GITHUB_STEP_SUMMARY
-              echo "⏭️ Next: **8️⃣ Dev EKS Karpenter** will trigger automatically" >> $GITHUB_STEP_SUMMARY
               break
             fi
             echo "Waiting for ALB... ($i/18)"

@@ -29,7 +29,7 @@ Operational guide for deploying, verifying, and troubleshooting this stack. Read
 
 ## Deployment order
 
-Run workflow 1 manually with <code>action: apply</code>. Approve each subsequent apply as it arrives — the rest of the chain triggers automatically via <code>workflow_run</code>.
+Trigger **🚀 Pipeline (apply)** (<code>.github/workflows/orchestrator.yml</code>) with <code>action: apply</code>. All 9 components run as one job graph, in order — approve each <code>environment</code> gate as it appears in that single run. Each component can also be run standalone via its own <code>workflow_dispatch</code> for testing (with full <code>plan</code>/<code>apply</code>/<code>destroy</code> options), but the orchestrator is the normal path.
 
 <table>
 <tr><th>#</th><th>Workflow</th><th>Approval env</th><th>What it creates</th><th>Typical time</th></tr>
@@ -84,6 +84,7 @@ kubectl get storageclass
 
 <table>
 <tr><th>Symptom</th><th>Root cause</th><th>Fix</th></tr>
+<tr><td><code>Invalid workflow file ... Error calling workflow '...component-1-security-vpc.yml@...'. The workflow is requesting 'id-token: write', but is only allowed 'id-token: none'</code></td><td><code>secrets: inherit</code> passes secrets to called reusable workflows, but <strong>permissions do not inherit</strong> the same way — the orchestrator's run-level token defaults to <code>id-token: none</code> unless granted explicitly</td><td>Add a top-level <code>permissions: { id-token: write, contents: read }</code> block to <code>orchestrator.yml</code> and <code>destroy-pipeline.yml</code> themselves (not the component files, which already have it)</td></tr>
 <tr><td><code>provider registry.terraform.io/hashicorp/kubectl does not have...</code></td><td>ArgoCD/Karpenter modules use <code>gavinbunney/kubectl</code>, not <code>hashicorp/kubectl</code></td><td>Add <code>required_providers</code> block for <code>gavinbunney/kubectl ~> 1.14</code> to <strong>both</strong> the module's <code>versions.tf</code> and the environment's <code>providers.tf</code>/<code>backend.tf</code>, then <code>rm .terraform.lock.hcl && terraform init</code></td></tr>
 <tr><td><code>ImagePullBackOff</code> on ArgoCD/ALB/Karpenter pods</td><td>Nodes can't reach the image registry — usually a broken NAT/TGW egress path</td><td>Run the nettest pod above. If it fails, check Security VPC public route table has TGW return routes for Dev/Prod CIDRs (see Transit Gateway section)</td></tr>
 <tr><td>Karpenter <code>403 Forbidden</code> pulling <code>602401143452.dkr.ecr.../karpenter/controller</code></td><td>That registry account doesn't host Karpenter images — only AWS-maintained add-ons</td><td>Remove the <code>controller.image.repository</code> override in the Helm release; let it default to <code>public.ecr.aws/karpenter</code> (reachable once NAT/TGW works)</td></tr>
@@ -101,13 +102,15 @@ kubectl get storageclass
 
 ## Destroy order
 
-Destroy is manual-only per workflow and never cascades automatically. To fully tear down, run <code>action: destroy</code> on each workflow in **reverse order**:
+Trigger **🔥 Pipeline (destroy)** (<code>.github/workflows/destroy-pipeline.yml</code>). It runs all 9 components in reverse order with <code>action: destroy</code> hardcoded — this workflow has no action choice; running it IS the deliberate destroy action. Approval gates still apply at each step.
 
 ```
 9️⃣ Kubecost → 8️⃣ Karpenter → 7️⃣ ArgoCD → 6️⃣ ALB Controller →
 5️⃣b EKS Add-ons → 5️⃣a EKS Cluster → 4️⃣b Transit Gateway →
 4️⃣ Peering → 3️⃣ Prod VPC → 2️⃣ Dev VPC → 1️⃣ Security VPC
 ```
+
+A standalone destroy of an individual component (via its own <code>workflow_dispatch</code>) never cascades to other components — only the dedicated destroy pipeline runs the full reverse sequence.
 
 ## Karpenter migration checklist
 
